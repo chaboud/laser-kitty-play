@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="robots" content="noindex, nofollow" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+<title>laser-kitty grey-box</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #14121a; touch-action: none; overscroll-behavior: none; }
+  #scene { position: fixed; inset: 0; width: 100%; height: 100%; touch-action: none; }
+  #hud { position: fixed; top: env(safe-area-inset-top, 8px); left: 0; right: 0; text-align: center;
+         font: 700 22px system-ui, sans-serif; color: #ffe86b; pointer-events: none; text-shadow: 0 2px 6px #000; }
+  #state { font-size: 13px; color: #9ad; font-weight: 500; letter-spacing: 0.12em; }
+  #meter { width: 120px; height: 5px; margin: 4px auto 0; background: #333; border-radius: 3px; overflow: hidden; }
+  #meter > div { height: 100%; width: 0%; background: #6ecb63; }
+  #pad { position: fixed; left: 0; right: 0; bottom: 0; height: 33vh;
+         transition: height 0.25s;
+         background: linear-gradient(to top, rgba(255,60,60,0.10), rgba(255,60,60,0.02));
+         border-top: 1px solid rgba(255,90,90,0.35); }
+  #pad.short { height: 22vh; }
+  #thumb { position: absolute; width: 46px; height: 46px; border-radius: 50%; border: 2px solid #ff5a5a;
+           background: rgba(255,90,90,0.25); transform: translate(-50%,-50%); left: 50%; top: 50%; pointer-events: none; }
+  #pops { position: fixed; inset: 0; pointer-events: none; overflow: hidden; }
+  .pop { position: absolute; font: 800 20px system-ui, sans-serif; color: #7dff8a; text-shadow: 0 2px 4px #000;
+         animation: rise 0.9s ease-out forwards; }
+  .pop.big { font-size: 32px; color: #ffd75e; animation-duration: 1.2s; }
+  #tags { position: fixed; inset: 0; pointer-events: none; }
+  .cattag { position: absolute; transform: translate(-50%, -100%); display: none;
+            font: 600 10px ui-monospace, monospace; color: #d7e3ff; white-space: nowrap;
+            background: rgba(20,18,28,0.75); border: 1px solid #3a3644; border-radius: 5px;
+            padding: 2px 5px; }
+  @keyframes rise { to { transform: translateY(-60px); opacity: 0; } }
+  .ctl { position: fixed; top: calc(env(safe-area-inset-top, 8px) + 4px); z-index: 5;
+         width: 44px; height: 44px; border-radius: 10px; border: 1px solid #3a3644;
+         background: rgba(30,27,38,0.8); color: #cfd4e6; font: 700 17px system-ui, sans-serif; }
+  #reset { left: 10px; }
+  #toss { left: 62px; font-size: 20px; }
+  #dbg { right: 10px; font-size: 12px; letter-spacing: 0.06em; }
+  #panhand { position: fixed; right: 12px; bottom: calc(33vh + 16px); z-index: 5;
+             width: 46px; height: 46px; border-radius: 50%; border: 1px solid #3a3644;
+             background: rgba(30,27,38,0.8); color: #9ad; font: 700 20px system-ui, sans-serif;
+             display: flex; align-items: center; justify-content: center;
+             touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; }
+  #panhand:active { cursor: grabbing; border-color: #53c8d8; color: #53c8d8; }
+  #dbg.on { border-color: #53c8d8; color: #53c8d8; }
+  #gear { right: 62px; font-size: 19px; }
+  #panel { position: fixed; top: calc(env(safe-area-inset-top, 8px) + 54px); right: 10px; z-index: 6;
+           width: 230px; padding: 12px 14px; border-radius: 12px; border: 1px solid #3a3644;
+           background: rgba(24,21,32,0.94); color: #cfd4e6; font: 500 12px system-ui, sans-serif;
+           display: none;
+           max-height: calc(100vh - env(safe-area-inset-top, 8px) - 90px);
+           overflow-y: auto; touch-action: pan-y; overscroll-behavior: contain;
+           -webkit-overflow-scrolling: touch; }
+  #panel.open { display: block; }
+  #panel h3 { margin: 0 0 8px; font-size: 11px; letter-spacing: 0.14em; color: #9ad; }
+  #panel label { display: block; margin: 8px 0 2px; }
+  #panel .row { display: flex; align-items: center; gap: 8px; }
+  #panel input[type=range] { flex: 1; accent-color: #ff5a5a; }
+  #panel .val { width: 44px; text-align: right; color: #ffe86b; font-variant-numeric: tabular-nums; }
+  #panel .note { margin-top: 8px; color: #8a8798; font-size: 10px; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<button id="reset" class="ctl" aria-label="Reset room">&#8634;</button>
+<button id="toss" class="ctl" aria-label="Toss the cat back in">&#128008;</button>
+<button id="dbg" class="ctl" aria-label="Debug look">DBG</button>
+<button id="gear" class="ctl" aria-label="Settings">&#9881;</button>
+<div id="panel">
+  <h3>SETTINGS</h3>
+  <label>Room</label>
+  <div class="row"><select id="s-room" style="flex:1;background:#241f31;color:#cfd4e6;border:1px solid #3a3644;border-radius:6px;padding:4px;">
+    <option value="0">Living room</option>
+    <option value="1">Great room</option>
+    <option value="2">Bathroom</option>
+    <option value="3">Kitchen</option>
+    <option value="4">Mansion entry</option>
+    <option value="5">Garage</option>
+    <option value="6">Family home</option>
+    <option value="7">Apartments</option>
+    <option value="8">Bar &amp; grill</option>
+    <option value="9">Caf&eacute;</option>
+  </select></div>
+  <label>Cats</label>
+  <div class="row"><input type="range" id="s-cats" min="1" max="64" step="1"><span class="val" id="v-cats"></span></div>
+  <label>Cat weight</label>
+  <div class="row"><input type="range" id="s-weight" min="0.5" max="2" step="0.05"><span class="val" id="v-weight"></span></div>
+  <label>Cat strength</label>
+  <div class="row"><input type="range" id="s-strength" min="0.5" max="2" step="0.05"><span class="val" id="v-strength"></span></div>
+  <label>Gravity</label>
+  <div class="row"><input type="range" id="s-gravity" min="0.3" max="1.5" step="0.05"><span class="val" id="v-gravity"></span></div>
+  <label>Destruction</label>
+  <div class="row"><input type="range" id="s-destruct" min="0" max="2" step="0.1"><span class="val" id="v-destruct"></span></div>
+  <label>Render quality</label>
+  <div class="row"><input type="range" id="s-quality" min="0.75" max="2" step="0.25"><span class="val" id="v-quality"></span></div>
+  <label style="margin-top:10px">Shadows</label>
+  <div class="row"><select id="s-shadows" style="flex:1;background:#241f31;color:#cfd4e6;border:1px solid #3a3644;border-radius:6px;padding:4px;">
+    <option value="auto">Auto (fits device)</option>
+    <option value="soft">Soft &middot; high</option>
+    <option value="light">Light &middot; fast</option>
+    <option value="off">Off</option>
+  </select></div>
+  <label style="margin-top:10px">Ambient occlusion</label>
+  <div class="row"><select id="s-ao" style="flex:1;background:#241f31;color:#cfd4e6;border:1px solid #3a3644;border-radius:6px;padding:4px;">
+    <option value="auto">Auto (fits device)</option>
+    <option value="on">On</option>
+    <option value="off">Off</option>
+  </select></div>
+  <label>Shadow strength</label>
+  <div class="row"><input type="range" id="s-shstr" min="0.2" max="1" step="0.05"><span class="val" id="v-shstr"></span></div>
+  <label>SSAO strength</label>
+  <div class="row"><input type="range" id="s-aostr" min="0" max="8" step="0.5"><span class="val" id="v-aostr"></span></div>
+  <label style="margin-top:10px">Laser mode</label>
+  <div class="row"><select id="s-laser" style="flex:1;background:#241f31;color:#cfd4e6;border:1px solid #3a3644;border-radius:6px;padding:4px;">
+    <option value="pad">Pad &middot; direct (classic)</option>
+    <option value="wand">Wand &middot; from the hip</option>
+    <option value="compact">Compact pad &middot; belly fan</option>
+  </select></div>
+  <label>Pad size (compact)</label>
+  <div class="row"><input type="range" id="s-padscale" min="0.3" max="1" step="0.05"><span class="val" id="v-padscale"></span></div>
+  <label style="margin-top:10px">Cat version</label>
+  <div class="row"><select id="s-catver" style="flex:1;background:#241f31;color:#cfd4e6;border:1px solid #3a3644;border-radius:6px;padding:4px;">
+    <option value="v1">V1 &middot; blob cats (classic)</option>
+    <option value="v2">V2 &middot; rigged cat</option>
+  </select></div>
+  <label class="row"><input type="checkbox" id="s-sound"> Sound</label>
+  <label class="row"><input type="checkbox" id="s-pops"> Score pop-ups</label>
+  <button id="s-defaults" style="width:100%;margin-top:10px;padding:6px;border-radius:8px;border:1px solid #3a3644;background:#241f31;color:#cfd4e6;font:600 12px system-ui,sans-serif;">Reset to defaults</button>
+  <div class="note">cats &amp; weight rebuild the room &middot; strength &amp; gravity apply live &middot; build <b id="buildtag">k44</b></div>
+</div>
+<div id="hud">
+  <div id="score">0</div>
+  <div id="state">LOADING</div>
+  <div id="meter"><div id="meterfill"></div></div>
+</div>
+<div id="pad"><div id="thumb"></div></div>
+<div id="panhand" aria-label="Drag to pan the view">&#10021;</div>
+<div id="pops"></div>
+<div id="tags"></div>
+<script type="importmap">
+{"imports":{
+  "three": "./vendor/three.module.min.js",
+  "three/examples/jsm/postprocessing/Pass.js": "./vendor/Pass.js",
+  "postprocessing": "./vendor/pp-stub.js"
+}}
+</script>
+<script type="module" src="main.js?v=k44"></script>
+</body>
+</html>
